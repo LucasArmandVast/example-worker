@@ -1,14 +1,7 @@
-from vastai_sdk import Worker, WorkerConfig, HandlerConfig
-import logging
-import sys
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
-)
+from vastai import Worker, WorkerConfig, HandlerConfig
 
 handler_config = HandlerConfig(
+    endpoint="/v1/completions",
     route="/v1/completions"
 )
 

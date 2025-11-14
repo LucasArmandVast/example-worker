@@ -4,6 +4,6 @@ This example shows how you can setup Python worker to handle requests sent to yo
 
 Make sure you install the Vast.ai SDK:
 ```
-pip install vastai_sdk
+pip install vastai
 ```
 
