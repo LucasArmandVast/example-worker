@@ -43,9 +43,9 @@ handler = HandlerConfig(
 
 # Create worker config
 worker_config = WorkerConfig(
+    model_server_url="http://127.0.0.1",
     model_server_port=5001,
     model_log_file="/tmp/model.log",
-    model_server_url="http://127.0.0.1",
     handlers=[handler],
     allow_parallel_requests=False,
     benchmark_route="/v1/completions"

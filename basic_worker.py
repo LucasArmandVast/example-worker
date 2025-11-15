@@ -1,7 +1,6 @@
 from vastai import Worker, WorkerConfig, HandlerConfig
 
 handler_config = HandlerConfig(
-    endpoint="/v1/completions",
     route="/v1/completions"
 )
 
