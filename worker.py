@@ -68,6 +68,10 @@ worker_config = WorkerConfig(
             workload_calculator= lambda data: data.get("max_tokens", 0),
             allow_parallel_requests=True,
             max_queue_time=60.0,
+            benchmark_config=BenchmarkConfig(
+                generator=completions_benchmark_generator,
+                concurrency=100
+            )
         ),
         HandlerConfig(
             route="/v1/chat/completions",
