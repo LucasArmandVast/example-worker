@@ -68,23 +68,14 @@ worker_config = WorkerConfig(
             workload_calculator= lambda data: data.get("max_tokens", 0),
             allow_parallel_requests=True,
             max_queue_time=60.0,
-            benchmark_config=BenchmarkConfig(
-                generator=completions_benchmark_generator,
-                concurrency=100
-            )
         ),
         HandlerConfig(
             route="/v1/chat/completions",
             workload_calculator= lambda data: data.get("max_tokens", 0),
             allow_parallel_requests=True,
             max_queue_time=60.0,
-            benchmark_config=BenchmarkConfig(
-                generator=chat_completions_benchmark_generator,
-                concurrency=100
-            )
         )
     ],
-    benchmark_route="/v1/completions",
     log_action_config=LogActionConfig(
         on_load=MODEL_LOAD_LOG_MSG,
         on_error=MODEL_ERROR_LOG_MSGS,
