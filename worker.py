@@ -56,7 +56,7 @@ worker_config = WorkerConfig(
             allow_parallel_requests=True,
             max_queue_time=60.0,
             benchmark_config=BenchmarkConfig(
-                benchmark_generator=benchmark_generator,
+                generator=benchmark_generator,
                 concurrency=50
             )
         )
