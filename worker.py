@@ -1,7 +1,9 @@
 import random
 import sys
+import json
 
 from vastai import Worker, WorkerConfig, HandlerConfig, LogActionConfig, BenchmarkConfig
+from vastai.serverless.server.lib.data_types import JsonDataException
 
 # ComyUI model configuration
 MODEL_SERVER_URL           = 'http://127.0.0.1'
@@ -39,6 +41,9 @@ benchmark_prompts = [
 ]
 
 
+def parse_request(json_msg):
+    return {"input" : json_msg}
+
 benchmark_dataset = [
     {
         "input": {
@@ -64,6 +69,7 @@ worker_config = WorkerConfig(
             route="/generate/sync",
             allow_parallel_requests=False,
             max_queue_time=10.0,
+            on_request=parse_request,
             benchmark_config=BenchmarkConfig(
                 dataset=benchmark_dataset,
             )
