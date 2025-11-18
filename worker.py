@@ -39,7 +39,7 @@ benchmark_prompts = [
 ]
 
 
-benchmark_dataset = {
+benchmark_dataset = [
     {
         "request_id": f"test-{random.randint(1000, 99999)}",
         "modifier": "Text2Image",
@@ -51,7 +51,7 @@ benchmark_dataset = {
             "seed": random.randint(0, sys.maxsize)
         }
     } for prompt in benchmark_prompts
-}
+]
 
 worker_config = WorkerConfig(
     model_server_url=MODEL_SERVER_URL,
