@@ -1,6 +1,5 @@
 import nltk
 import random
-import os
 
 from vastai import Worker, WorkerConfig, HandlerConfig, LogActionConfig, BenchmarkConfig
 
