@@ -4,13 +4,13 @@ import os
 
 from vastai import Worker, WorkerConfig, HandlerConfig, LogActionConfig, BenchmarkConfig
 
-# ComyUI model configuration
+# TGI model configuration
 MODEL_SERVER_URL           = 'http://0.0.0.0'
 MODEL_SERVER_PORT          = 5001
-MODEL_LOG_FILE             = '/var/log/portal/comfyui.log'
+MODEL_LOG_FILE             = "/workspace/infer.log"
 MODEL_HEALTHCHECK_ENDPOINT = "/health"
 
-# ComyUI-specific log messages
+# TGI-specific log messages
 MODEL_LOAD_LOG_MSG = [
     '"message":"Connected","target":"text_generation_router"',
     '"message":"Connected","target":"text_generation_router::server"',
@@ -37,10 +37,12 @@ def benchmark_generator() -> dict:
         raise ValueError("MODEL_NAME environment variable not set")
 
     benchmark_data = {
-        "model": model,
-        "prompt": prompt,
-        "temperature": 0.7,
-        "max_tokens": 500,
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 128,
+            "temperature": 0.7,
+            "return_full_text": False
+        }
     }
 
     return benchmark_data
@@ -59,7 +61,8 @@ worker_config = WorkerConfig(
             benchmark_config=BenchmarkConfig(
                 generator=benchmark_generator,
                 concurrency=50
-            )
+            ),
+            workload_calculator= lambda x: x["parameters"]["max_new_tokens"]
         )
     ],
     log_action_config=LogActionConfig(
@@ -69,4 +72,4 @@ worker_config = WorkerConfig(
     )
 )
 
-Worker(worker_config).run_sync()
+Worker(worker_config).run()
