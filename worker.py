@@ -63,6 +63,12 @@ worker_config = WorkerConfig(
                 concurrency=50
             ),
             workload_calculator= lambda x: x["parameters"]["max_new_tokens"]
+        ),
+        HandlerConfig(
+            route="/generate_stream",
+            allow_parallel_requests=True,
+            max_queue_time=60.0,
+            workload_calculator= lambda x: x["parameters"]["max_new_tokens"]
         )
     ],
     log_action_config=LogActionConfig(
