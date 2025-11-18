@@ -1,9 +1,7 @@
 import random
 import sys
-import json
 
 from vastai import Worker, WorkerConfig, HandlerConfig, LogActionConfig, BenchmarkConfig
-from vastai.serverless.server.lib.data_types import JsonDataException
 
 # ComyUI model configuration
 MODEL_SERVER_URL           = 'http://127.0.0.1'
