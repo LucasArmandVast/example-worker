@@ -82,4 +82,4 @@ worker_config = WorkerConfig(
     )
 )
 
-Worker(worker_config).run_sync()
+Worker(worker_config).run()
