@@ -32,9 +32,6 @@ WORD_LIST = nltk.corpus.words.words()
 
 def benchmark_generator() -> dict:
     prompt = " ".join(random.choices(WORD_LIST, k=int(250)))
-    model = os.environ.get("MODEL_NAME")
-    if not model:
-        raise ValueError("MODEL_NAME environment variable not set")
 
     benchmark_data = {
         "inputs": prompt,
