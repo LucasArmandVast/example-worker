@@ -1,57 +1,48 @@
+import nltk
 import random
-import sys
+import os
 
 from vastai import Worker, WorkerConfig, HandlerConfig, LogActionConfig, BenchmarkConfig
 
-# ComyUI model configuration
+# vLLM model configuration
 MODEL_SERVER_URL           = 'http://127.0.0.1'
-MODEL_SERVER_PORT          = 18288
-MODEL_LOG_FILE             = '/var/log/portal/comfyui.log'
+MODEL_SERVER_PORT          = 18000
+MODEL_LOG_FILE             = '/var/log/portal/vllm.log'
 MODEL_HEALTHCHECK_ENDPOINT = "/health"
 
-# ComyUI-specific log messages
+# vLLM-specific log messages
 MODEL_LOAD_LOG_MSG = [
-    "To see the GUI go to: "
+    "Application startup complete.",
 ]
 
 MODEL_ERROR_LOG_MSGS = [
-    "MetadataIncompleteBuffer",
-    "Value not in list: ",
-    "[ERROR] Provisioning Script failed"
+    "INFO exited: vllm",
+    "RuntimeError: Engine",
+    "Traceback (most recent call last):"
 ]
 
 MODEL_INFO_LOG_MSGS = [
-    '"message":"Downloading'
+    '"message":"Download'
 ]
 
-benchmark_prompts = [
-    "Cartoon hoodie hero; orc, anime cat, bunny; black goo; buff; vector on white.",
-    "Cozy farming-game scene with fine details.",
-    "2D vector child with soccer ball; airbrush chrome; swagger; antique copper.",
-    "Realistic futuristic downtown of low buildings at sunset.",
-    "Perfect wave front view; sunny seascape; ultra-detailed water; artful feel.",
-    "Clear cup with ice, fruit, mint; creamy swirls; fluid-sim CGI; warm glow.",
-    "Male biker with backpack on motorcycle; oilpunk; award-worthy magazine cover.",
-    "Collage for textile; surreal cartoon cat in cap/jeans before poster; crisp.",
-    "Medieval village inside glass sphere; volumetric light; macro focus.",
-    "Iron Man with glowing axe; mecha sci-fi; jungle scene; dynamic light.",
-    "Pope Francis DJ in leather jacket, mixing on giant console; dramatic.",
-]
+nltk.download("words")
+WORD_LIST = nltk.corpus.words.words()
 
 
-benchmark_dataset = [
-    {
-        "request_id": f"test-{random.randint(1000, 99999)}",
-        "modifier": "Text2Image",
-        "modifications": {
-            "prompt": prompt,
-            "width": 512,
-            "height": 512,
-            "steps": 20,
-            "seed": random.randint(0, sys.maxsize)
-        }
-    } for prompt in benchmark_prompts
-]
+def completions_benchmark_generator() -> dict:
+    prompt = " ".join(random.choices(WORD_LIST, k=int(250)))
+    model = os.environ.get("MODEL_NAME")
+    if not model:
+        raise ValueError("MODEL_NAME environment variable not set")
+
+    benchmark_data = {
+        "model": model,
+        "prompt": prompt,
+        "temperature": 0.7,
+        "max_tokens": 500,
+    }
+
+    return benchmark_data
 
 worker_config = WorkerConfig(
     model_server_url=MODEL_SERVER_URL,
@@ -60,12 +51,20 @@ worker_config = WorkerConfig(
     model_healthcheck_url=MODEL_HEALTHCHECK_ENDPOINT,
     handlers=[
         HandlerConfig(
-            route="/generate/sync",
-            allow_parallel_requests=False,
-            max_queue_time=10.0,
+            route="/v1/completions",
+            workload_calculator= lambda data: data.get("max_tokens", 0),
+            allow_parallel_requests=True,
+            max_queue_time=60.0,
             benchmark_config=BenchmarkConfig(
-                dataset=benchmark_dataset,
+                generator=completions_benchmark_generator,
+                concurrency=100
             )
+        ),
+        HandlerConfig(
+            route="/v1/chat/completions",
+            workload_calculator= lambda data: data.get("max_tokens", 0),
+            allow_parallel_requests=True,
+            max_queue_time=60.0,
         )
     ],
     log_action_config=LogActionConfig(
