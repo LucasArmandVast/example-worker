@@ -72,7 +72,7 @@ def extract_remote_dispatch_params(json: dict) -> dict:
 
 async def endpoint_submit():
     if MODE == "serve":
-        remote_function_handlers : list[HandlerConfig]
+        remote_function_handlers : list[HandlerConfig] = []
 
         for remote_func_name, remote_func in ENDPOINT_REMOTE_DISPATCH_FUNCTIONS.items():
             benchmark_config: BenchmarkConfig = None
@@ -84,14 +84,14 @@ async def endpoint_submit():
                     )
                 elif ENDPOINT_BENCHMARK_GENERATOR is not None:
                     benchmark_config = BenchmarkConfig(
-                        generator=ENDPOINT_BENCHMARK_DATASET,
+                        generator=ENDPOINT_BENCHMARK_GENERATOR,
                         runs=10
                     )
                 else:
                     raise ValueError("Must specify either a benchmark dataset or benchmark generator for benchmark function")
 
-            remote_func_hander = HandlerConfig(
-                route="/remote/{remote_func_name}",
+            remote_func_handler = HandlerConfig(
+                route=f"/remote/{remote_func_name}",
                 is_remote_dispatch=True,
                 remote_dispatch_function=remote_func,
                 allow_parallel_requests=False,
@@ -100,7 +100,7 @@ async def endpoint_submit():
                 max_queue_time=30.0
             )
             
-            remote_function_handlers.append(remote_func_hander)
+            remote_function_handlers.append(remote_func_handler)
 
 
         remote_worker_config = WorkerConfig(
@@ -124,7 +124,7 @@ async def endpoint_submit():
 
         # Enter the background task if present
         if ENDPOINT_BACKGROUND_TASK:
-            await ENDPOINT_BACKGROUND_TASK
+            await asyncio.gather(worker_task, ENDPOINT_BACKGROUND_TASK())
         else:
             await worker_task
 
