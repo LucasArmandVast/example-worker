@@ -120,10 +120,13 @@ async def endpoint_submit():
             ENDPOINT_INIT_FUNCTION()
 
         # Run the worker asyncronously 
-        worker_task = asyncio.run(remote_worker.run())
+        worker_task = asyncio.create_task(remote_worker.run_async())
 
         # Enter the background task if present
         if ENDPOINT_BACKGROUND_TASK:
             await ENDPOINT_BACKGROUND_TASK
         else:
             await worker_task
+
+if __name__ == "__main__":
+    asyncio.run(endpoint_submit())
