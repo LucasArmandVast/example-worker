@@ -129,4 +129,5 @@ async def endpoint_submit():
             await worker_task
 
 if __name__ == "__main__":
+    print("running worker")
     asyncio.run(endpoint_submit())
