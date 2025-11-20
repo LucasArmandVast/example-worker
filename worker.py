@@ -1,77 +1,129 @@
-import nltk
+from vastai import Worker, WorkerConfig, HandlerConfig, BenchmarkConfig, LogActionConfig
+from typing import Callable, Awaitable
+from aiohttp import web, ClientResponse
+import asyncio
 import random
-import os
+# This code runs inside of endpoint.submit()
 
-from vastai import Worker, WorkerConfig, HandlerConfig, LogActionConfig, BenchmarkConfig
+MODE = "serve"
+MODEL_SERVER_URL = "127.0.0.1"
+MODEL_SERVER_PORT = 5001
+MODEL_LOG_FILE = "/var/log/remote/debug.log"
+MODEL_HEALTHCHECK_ENDPOINT = "health"
 
-# vLLM model configuration
-MODEL_SERVER_URL           = 'http://127.0.0.1'
-MODEL_SERVER_PORT          = 18000
-MODEL_LOG_FILE             = '/var/log/portal/vllm.log'
-MODEL_HEALTHCHECK_ENDPOINT = "/health"
-
-# vLLM-specific log messages
 MODEL_LOAD_LOG_MSG = [
-    "Application startup complete.",
+    "Remote Dispatch ready",
 ]
 
 MODEL_ERROR_LOG_MSGS = [
-    "INFO exited: vllm",
-    "RuntimeError: Engine",
-    "Traceback (most recent call last):"
+    "Remote Dispatch error"
 ]
 
-MODEL_INFO_LOG_MSGS = [
-    '"message":"Download'
+def remote_func_a(a: int):
+    return a + 1
+
+def remote_func_b(b: str):
+    return b + "-str"
+
+ENDPOINT_BENCHMARK_FUNCTION = "remote_func_a"
+ENDPOINT_BENCHMARK_DATASET = [
+    {
+        "a": 1
+    },
+    {
+        "a": 2
+    },
+    {
+        "a": 3
+    },
 ]
 
-nltk.download("words")
-WORD_LIST = nltk.corpus.words.words()
+def benchmark_generator() -> dict:
+    return { "a" : random.randint(0, 100)}
+
+ENDPOINT_BENCHMARK_GENERATOR: Callable[[], dict] = benchmark_generator
+
+ENDPOINT_REMOTE_DISPATCH_FUNCTIONS : dict[Callable] = {
+    "remote_func_a" : remote_func_a,
+    "remote_func_b" : remote_func_b
+}
+
+def on_init():
+    print("I'm the initialization function!")
+
+ENDPOINT_INIT_FUNCTION: Callable = on_init
+
+async def background_task():
+    while True:
+        print("Running the backgroun task!")
+        await asyncio.sleep(10)
+
+ENDPOINT_BACKGROUND_TASK: Callable[[], Awaitable[None]] = background_task
+
+def extract_remote_dispatch_params(json: dict) -> dict:
+    """
+    Extract the params from the remote dispatch request
+    """
+    if json.get("params"):
+        return json["params"]
+    else:
+        raise ValueError("Request JSON missing params")
 
 
-def completions_benchmark_generator() -> dict:
-    prompt = " ".join(random.choices(WORD_LIST, k=int(250)))
-    model = os.environ.get("MODEL_NAME")
-    if not model:
-        raise ValueError("MODEL_NAME environment variable not set")
+async def endpoint_submit():
+    if MODE == "serve":
+        remote_function_handlers : list[HandlerConfig]
 
-    benchmark_data = {
-        "model": model,
-        "prompt": prompt,
-        "temperature": 0.7,
-        "max_tokens": 500,
-    }
+        for remote_func_name, remote_func in ENDPOINT_REMOTE_DISPATCH_FUNCTIONS.items():
+            benchmark_config: BenchmarkConfig = None
+            if remote_func_name == ENDPOINT_BENCHMARK_FUNCTION:
+                if len(ENDPOINT_BENCHMARK_DATASET) > 0:
+                    benchmark_config = BenchmarkConfig(
+                        dataset=ENDPOINT_BENCHMARK_DATASET,
+                        runs=10
+                    )
+                elif ENDPOINT_BENCHMARK_GENERATOR is not None:
+                    benchmark_config = BenchmarkConfig(
+                        generator=ENDPOINT_BENCHMARK_DATASET,
+                        runs=10
+                    )
+                else:
+                    raise ValueError("Must specify either a benchmark dataset or benchmark generator for benchmark function")
 
-    return benchmark_data
-
-worker_config = WorkerConfig(
-    model_server_url=MODEL_SERVER_URL,
-    model_server_port=MODEL_SERVER_PORT,
-    model_log_file=MODEL_LOG_FILE,
-    model_healthcheck_url=MODEL_HEALTHCHECK_ENDPOINT,
-    handlers=[
-        HandlerConfig(
-            route="/v1/completions",
-            workload_calculator= lambda data: data.get("max_tokens", 0),
-            allow_parallel_requests=True,
-            max_queue_time=60.0,
-            benchmark_config=BenchmarkConfig(
-                generator=completions_benchmark_generator,
-                concurrency=100
+            remote_func_hander = HandlerConfig(
+                route="/remote/{remote_func_name}",
+                is_remote_dispatch=True,
+                remote_dispatch_function=remote_func,
+                allow_parallel_requests=False,
+                request_parser=extract_remote_dispatch_params,
+                benchmark_config=benchmark_config,
+                max_queue_time=30.0
             )
-        ),
-        HandlerConfig(
-            route="/v1/chat/completions",
-            workload_calculator= lambda data: data.get("max_tokens", 0),
-            allow_parallel_requests=True,
-            max_queue_time=60.0,
-        )
-    ],
-    log_action_config=LogActionConfig(
-        on_load=MODEL_LOAD_LOG_MSG,
-        on_error=MODEL_ERROR_LOG_MSGS,
-        on_info=MODEL_INFO_LOG_MSGS
-    )
-)
+            
+            remote_function_handlers.append(remote_func_hander)
 
-Worker(worker_config).run()
+
+        remote_worker_config = WorkerConfig(
+            model_log_file=MODEL_LOG_FILE,
+            handlers = remote_function_handlers,
+            log_action_config=LogActionConfig(
+                on_load=MODEL_LOAD_LOG_MSG,
+                on_error=MODEL_ERROR_LOG_MSGS,
+            )
+        )
+
+        # Build the worker handling our remote dispatch functions
+        remote_worker = Worker(remote_worker_config)
+
+        # Call on_init if present
+        if ENDPOINT_INIT_FUNCTION is not None:
+            ENDPOINT_INIT_FUNCTION()
+
+        # Run the worker asyncronously 
+        worker_task = asyncio.run(remote_worker.run())
+
+        # Enter the background task if present
+        if ENDPOINT_BACKGROUND_TASK:
+            await ENDPOINT_BACKGROUND_TASK
+        else:
+            await worker_task
