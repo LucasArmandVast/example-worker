@@ -14,10 +14,12 @@ def completions_benchmark_generator() -> dict:
         raise ValueError("MODEL_NAME environment variable not set")
 
     benchmark_data = {
-        "model": model,
-        "prompt": prompt,
-        "temperature": 0.7,
-        "max_tokens": 500,
+        "body": {
+            "model": model,
+            "prompt": prompt,
+            "temperature": 0.7,
+            "max_tokens": 500,
+        }
     }
 
     return benchmark_data
