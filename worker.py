@@ -2,6 +2,7 @@ from vastai import Worker, WorkerConfig, HandlerConfig, BenchmarkConfig, LogActi
 from typing import Callable, Awaitable
 from aiohttp import web, ClientResponse
 import asyncio
+from anyio import Path
 import random
 # This code runs inside of endpoint.submit()
 
@@ -25,17 +26,12 @@ def remote_func_a(a: int):
 def remote_func_b(b: str):
     return b + "-str"
 
+
 ENDPOINT_BENCHMARK_FUNCTION = "remote_func_a"
 ENDPOINT_BENCHMARK_DATASET = [
-    {
-        "a": 1
-    },
-    {
-        "a": 2
-    },
-    {
-        "a": 3
-    },
+    {"a": 1},
+    {"a": 2},
+    {"a": 3},
 ]
 
 def benchmark_generator() -> dict:
@@ -55,7 +51,7 @@ ENDPOINT_INIT_FUNCTION: Callable = on_init
 
 async def background_task():
     while True:
-        print("Running the backgroun task!")
+        print("Running the background task!")
         await asyncio.sleep(10)
 
 ENDPOINT_BACKGROUND_TASK: Callable[[], Awaitable[None]] = background_task
@@ -72,6 +68,18 @@ def extract_remote_dispatch_params(json: dict) -> dict:
 
 async def endpoint_submit():
     if MODE == "serve":
+
+        remote_dispatch_ready_event = asyncio.Event()
+
+        async def _remote_dispatch_ready_hook() -> None:
+            """
+            This hook is called by remote dispatch functions (indirectly in this
+            example via _example_mark_remote_ready_after_delay). Once the event
+            is set, a listener task will log "Remote Dispatch ready".
+            """
+            if not remote_dispatch_ready_event.is_set():
+                remote_dispatch_ready_event.set()
+
         remote_function_handlers : list[HandlerConfig] = []
 
         for remote_func_name, remote_func in ENDPOINT_REMOTE_DISPATCH_FUNCTIONS.items():
@@ -121,6 +129,9 @@ async def endpoint_submit():
 
         # Run the worker asyncronously 
         worker_task = asyncio.create_task(remote_worker.run_async())
+
+        model_log = Path(MODEL_LOG_FILE)
+        await model_log.write_text("Remote Dispatch ready")
 
         # Enter the background task if present
         if ENDPOINT_BACKGROUND_TASK:
