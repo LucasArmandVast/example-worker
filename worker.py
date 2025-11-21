@@ -1,4 +1,4 @@
-from vastai.serverless.remote.endpoint import Endpoint
+from vastai.serverless.remote.endpoint import Endpoint, benchmark, remote
 
 @benchmark(
     endpoint_name="test-endpoint",
