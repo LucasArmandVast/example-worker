@@ -56,29 +56,8 @@ async def background_task():
 
 ENDPOINT_BACKGROUND_TASK: Callable[[], Awaitable[None]] = background_task
 
-def extract_remote_dispatch_params(json: dict) -> dict:
-    """
-    Extract the params from the remote dispatch request
-    """
-    if json.get("params"):
-        return json["params"]
-    else:
-        raise ValueError("Request JSON missing params")
-
-
 async def endpoint_submit():
     if MODE == "serve":
-
-        remote_dispatch_ready_event = asyncio.Event()
-
-        async def _remote_dispatch_ready_hook() -> None:
-            """
-            This hook is called by remote dispatch functions (indirectly in this
-            example via _example_mark_remote_ready_after_delay). Once the event
-            is set, a listener task will log "Remote Dispatch ready".
-            """
-            if not remote_dispatch_ready_event.is_set():
-                remote_dispatch_ready_event.set()
 
         remote_function_handlers : list[HandlerConfig] = []
 
@@ -103,7 +82,6 @@ async def endpoint_submit():
                 is_remote_dispatch=True,
                 remote_dispatch_function=remote_func,
                 allow_parallel_requests=False,
-                request_parser=extract_remote_dispatch_params,
                 benchmark_config=benchmark_config,
                 max_queue_time=30.0
             )
