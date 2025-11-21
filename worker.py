@@ -47,7 +47,8 @@ async def llm_infer(body: dict):
 
 endpoint = Endpoint(
     name="qwendpoint",
-    model_backend_load_logs=["Application startup complete."]
+    model_backend_load_logs=["Application startup complete."],
+    model_log_file="/var/log/portal/vllm.log"
 )
 
 endpoint.ready()
