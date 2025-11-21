@@ -20,10 +20,10 @@ MODEL_ERROR_LOG_MSGS = [
     "Remote Dispatch error"
 ]
 
-def remote_func_a(a: int):
+async def remote_func_a(a: int):
     return a + 1
 
-def remote_func_b(b: str):
+async def remote_func_b(b: str):
     return b + "-str"
 
 
