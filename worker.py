@@ -11,9 +11,11 @@ from vastai.serverless.remote.endpoint import Endpoint
 async def remote_func_a(x: int, y: int):
     return x + y
 
-@remote(endpoint_name="other-endpoint")
+@remote(endpoint_name="test-endpoint")
 async def remote_func_b(x: int, y: int):
     return x * y
 
-endpoint = Endpoint()
+endpoint = Endpoint(
+    name="test-endpoint"
+)
 endpoint.ready()
