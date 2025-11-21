@@ -127,10 +127,11 @@ async def endpoint_submit():
         if ENDPOINT_INIT_FUNCTION is not None:
             ENDPOINT_INIT_FUNCTION()
 
-        # Run the worker asyncronously 
         worker_task = asyncio.create_task(remote_worker.run_async())
 
         model_log = Path(MODEL_LOG_FILE)
+        # Create parent directories if they don't exist
+        await model_log.parent.mkdir(parents=True, exist_ok=True)
         await model_log.write_text("Remote Dispatch ready")
 
         # Enter the background task if present
