@@ -1,76 +1,52 @@
-import nltk
-import random
-import os
-
 from vastai import Worker, WorkerConfig, HandlerConfig, LogActionConfig, BenchmarkConfig
 
 # vLLM model configuration
 MODEL_SERVER_URL           = 'http://127.0.0.1'
-MODEL_SERVER_PORT          = 18000
-MODEL_LOG_FILE             = '/var/log/portal/vllm.log'
+MODEL_SERVER_PORT          = 8080
+MODEL_LOG_FILE             = '/var/log/portal/pytorch-model.log'
 MODEL_HEALTHCHECK_ENDPOINT = "/health"
 
 # vLLM-specific log messages
 MODEL_LOAD_LOG_MSG = [
-    "Application startup complete.",
+    "Model Server Running",
 ]
 
 MODEL_ERROR_LOG_MSGS = [
-    "INFO exited: vllm",
-    "RuntimeError: Engine",
     "Traceback (most recent call last):"
 ]
 
-MODEL_INFO_LOG_MSGS = [
-    '"message":"Download'
-]
-
-nltk.download("words")
-WORD_LIST = nltk.corpus.words.words()
-
-
-def completions_benchmark_generator() -> dict:
-    prompt = " ".join(random.choices(WORD_LIST, k=int(250)))
-    model = os.environ.get("MODEL_NAME")
-    if not model:
-        raise ValueError("MODEL_NAME environment variable not set")
-
-    benchmark_data = {
-        "model": model,
-        "prompt": prompt,
-        "temperature": 0.7,
-        "max_tokens": 500,
+#
+benchmark_dataset = [
+    {
+        "max_train_batches_per_epoch" : 10
     }
-
-    return benchmark_data
+]
 
 worker_config = WorkerConfig(
     model_server_url=MODEL_SERVER_URL,
     model_server_port=MODEL_SERVER_PORT,
     model_log_file=MODEL_LOG_FILE,
     model_healthcheck_url=MODEL_HEALTHCHECK_ENDPOINT,
+    # This determines how many async sessions we can have at one time on each worker
+    max_sessions=1,
     handlers=[
+        # We need to provide a synchronous route
+        # to benchmark on, which determines the performance
+        # of each recruited worker machine
         HandlerConfig(
-            route="/v1/completions",
-            workload_calculator= lambda data: data.get("max_tokens", 0),
-            allow_parallel_requests=True,
-            max_queue_time=60.0,
+            route="/start_sync_task",
+            allow_parallel_requests=False,
             benchmark_config=BenchmarkConfig(
-                generator=completions_benchmark_generator,
-                concurrency=100
+                dataset=benchmark_dataset, runs=1, do_warmup=False
             )
         ),
-        HandlerConfig(
-            route="/v1/chat/completions",
-            workload_calculator= lambda data: data.get("max_tokens", 0),
-            allow_parallel_requests=True,
-            max_queue_time=60.0,
-        )
+        HandlerConfig(route="/start_task"),
+        HandlerConfig(route="/status"),
+        HandlerConfig(route="/cancel_task"),
     ],
     log_action_config=LogActionConfig(
         on_load=MODEL_LOAD_LOG_MSG,
-        on_error=MODEL_ERROR_LOG_MSGS,
-        on_info=MODEL_INFO_LOG_MSGS
+        on_error=MODEL_ERROR_LOG_MSGS
     )
 )
 
