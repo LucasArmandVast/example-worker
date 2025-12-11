@@ -44,12 +44,21 @@ def completions_benchmark_generator() -> dict:
 
     return benchmark_data
 
+def remote_function(a: int):
+    return a + 1
+
 worker_config = WorkerConfig(
     model_server_url=MODEL_SERVER_URL,
     model_server_port=MODEL_SERVER_PORT,
     model_log_file=MODEL_LOG_FILE,
     model_healthcheck_url=MODEL_HEALTHCHECK_ENDPOINT,
     handlers=[
+        HandlerConfig(
+            route="/session",
+            workload_calculator= lambda _: 100.0,
+            remote_function=remote_function,
+            max_queue_time=10.0,
+        ),
         HandlerConfig(
             route="/v1/completions",
             workload_calculator= lambda data: data.get("max_tokens", 0),
