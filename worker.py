@@ -3,7 +3,7 @@ from vastai import Worker, WorkerConfig, HandlerConfig, LogActionConfig, Benchma
 # vLLM model configuration
 MODEL_SERVER_URL           = 'http://127.0.0.1'
 MODEL_SERVER_PORT          = 8080
-MODEL_LOG_FILE             = '/var/log/model.log'
+MODEL_LOG_FILE             = '/var/log/portal/pytorch-model.log'
 MODEL_HEALTHCHECK_ENDPOINT = "/health"
 
 # vLLM-specific log messages
