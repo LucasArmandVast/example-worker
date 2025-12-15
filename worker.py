@@ -30,7 +30,7 @@ worker_config = WorkerConfig(
         HandlerConfig(
             route="/start_task",
             benchmark_config=BenchmarkConfig(
-                dataset=benchmark_dataset, runs=1
+                dataset=benchmark_dataset, runs=1, do_warmup=False
             )
         ),
         HandlerConfig(route="/status"),

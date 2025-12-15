@@ -35,9 +35,6 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 
-# -----------------------------
-# Training model + helpers
-# -----------------------------
 
 class SmallCNN(nn.Module):
     def __init__(self, num_classes: int = 10):
@@ -64,6 +61,31 @@ def accuracy(logits: torch.Tensor, y: torch.Tensor) -> float:
 
 def now_s() -> float:
     return time.time()
+
+async def on_startup(app: web.Application) -> None:
+    """
+    Runs after the app is created and just before the server starts accepting requests.
+    Put any real readiness work here (warmups, checks, etc.).
+    """
+    # Example: do small CPU torch warmup so first request isn't "cold"
+    # (optional; remove if you don't want it)
+    try:
+        import torch
+        x = torch.randn(1, 1, 28, 28)
+        m = SmallCNN().eval()
+        with torch.no_grad():
+            _ = m(x)
+    except Exception:
+        # If warmup fails, you can decide to raise to fail-fast,
+        # or just continue. I'd usually fail-fast:
+        raise
+
+    # Signal readiness
+    app["ready_event"].set()
+
+# -----------------------------
+# Training model + helpers
+# -----------------------------
 
 
 # -----------------------------
@@ -347,6 +369,10 @@ async def json_request(request: web.Request) -> Dict[str, Any]:
 def make_app(manager: TaskManager) -> web.Application:
     app = web.Application()
 
+    app["ready_event"] = asyncio.Event()
+    app.on_startup.append(on_startup)
+
+
     async def start_task(request: web.Request) -> web.Response:
         payload = await json_request(request)
 
@@ -398,7 +424,11 @@ async def _run_server(host: str, port: int) -> None:
     await runner.setup()
     site = web.TCPSite(runner, host=host, port=port)
     await site.start()
+
+    await app["ready_event"].wait()
+
     print("Model Server Running")
+
     stop_event = asyncio.Event()
 
     def _handle_sig(*_args: Any) -> None:
