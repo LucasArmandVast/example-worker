@@ -29,6 +29,7 @@ worker_config = WorkerConfig(
     handlers=[
         HandlerConfig(
             route="/start_task",
+            allow_parallel_requests=False,
             benchmark_config=BenchmarkConfig(
                 dataset=benchmark_dataset, runs=1, do_warmup=False
             )
