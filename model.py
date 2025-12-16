@@ -157,14 +157,13 @@ class TaskManager:
             return True, ""
 
     def start(self, cfg: TaskConfig) -> str:
-        ok, msg = self.can_start()
-        if not ok:
-            raise RuntimeError(msg)
-
         task_id = str(uuid.uuid4())
         cancel_event = threading.Event()
 
         with self._lock:
+            if self._status.state == "running":
+                raise RuntimeError("A task is already running")
+
             self._status = TaskStatus(
                 task_id=task_id,
                 state="running",
@@ -189,14 +188,18 @@ class TaskManager:
         t.start()
         return task_id
 
+
     def cancel(self) -> Dict[str, Any]:
         with self._lock:
             if self._status.state != "running":
-                return self.snapshot()
+                # return a snapshot WITHOUT re-locking
+                return json.loads(json.dumps(self._status, default=lambda o: o.__dict__))
+
             if self._cancel_event is not None:
                 self._cancel_event.set()
             self._status.message = "Cancellation requested"
             self._status.last_update_at = now_s()
+
         return self.snapshot()
 
     def _set_status_update(self, **kwargs: Any) -> None:
