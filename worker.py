@@ -30,7 +30,6 @@ worker_config = WorkerConfig(
         HandlerConfig(
             route="/start_task",
             allow_parallel_requests=False,
-            max_queue_time=0.0,
             benchmark_config=BenchmarkConfig(
                 dataset=benchmark_dataset, runs=1, do_warmup=False
             )
