@@ -97,11 +97,13 @@ class TaskConfig:
     epochs: int = 2
     batch_size: int = 64
     lr: float = 1e-3
-    max_train_batches_per_epoch: int = 200   # keep it small / fast
+    max_train_batches_per_epoch: int = 200
     max_val_batches: int = 50
     seed: int = 1337
     data_dir: str = "./data"
-    num_workers: int = 0  # keep deterministic + simple
+    num_workers: int = 2          # GPU input pipeline benefits from workers (tune per box)
+    device: str = "auto"          # "auto" | "cuda" | "cpu"
+    pin_memory: bool = True
 
 
 @dataclass
@@ -233,16 +235,24 @@ class TaskManager:
 # Training loop
 # -----------------------------
 
-def run_training(
-    task_id: str,
-    cfg: TaskConfig,
-    cancel_event: threading.Event,
-    report,
-) -> None:
-    # Determinism-ish
+def run_training(task_id: str, cfg: TaskConfig, cancel_event: threading.Event, report) -> None:
     torch.manual_seed(cfg.seed)
 
-    device = torch.device("cpu")
+    # ---- Device selection ----
+    if cfg.device == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("device='cuda' requested but CUDA is not available")
+        device = torch.device("cuda")
+    elif cfg.device == "cpu":
+        device = torch.device("cpu")
+    else:  # "auto"
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    use_cuda = (device.type == "cuda")
+
+    # Optional: faster convs on fixed-size inputs
+    if use_cuda:
+        torch.backends.cudnn.benchmark = True
 
     tfm = transforms.Compose([
         transforms.ToTensor(),
@@ -253,12 +263,20 @@ def run_training(
     val_ds = datasets.MNIST(cfg.data_dir, train=False, download=True, transform=tfm)
 
     train_loader = DataLoader(
-        train_ds, batch_size=cfg.batch_size, shuffle=True,
-        num_workers=cfg.num_workers, pin_memory=False
+        train_ds,
+        batch_size=cfg.batch_size,
+        shuffle=True,
+        num_workers=cfg.num_workers,
+        pin_memory=(cfg.pin_memory and use_cuda),
+        persistent_workers=(cfg.num_workers > 0),
     )
     val_loader = DataLoader(
-        val_ds, batch_size=cfg.batch_size, shuffle=False,
-        num_workers=cfg.num_workers, pin_memory=False
+        val_ds,
+        batch_size=cfg.batch_size,
+        shuffle=False,
+        num_workers=cfg.num_workers,
+        pin_memory=(cfg.pin_memory and use_cuda),
+        persistent_workers=(cfg.num_workers > 0),
     )
 
     model = SmallCNN().to(device)
@@ -270,7 +288,7 @@ def run_training(
 
     report(
         total_steps=total_steps,
-        message="Training initialized",
+        message=f"Training initialized on {device.type}",
         epoch=0,
         step=0,
         train_loss=None,
@@ -298,7 +316,9 @@ def run_training(
                 report(message=f"Canceled during epoch {epoch}", epoch=epoch, step=global_step)
                 return
 
-            x, y = x.to(device), y.to(device)
+            # ---- Move batch to GPU (non_blocking only matters with pin_memory=True) ----
+            x = x.to(device, non_blocking=use_cuda)
+            y = y.to(device, non_blocking=use_cuda)
 
             opt.zero_grad(set_to_none=True)
             logits = model(x)
@@ -323,7 +343,6 @@ def run_training(
                     train_acc=running_acc / max(1, n_batches),
                 )
 
-        # Validation (small)
         model.eval()
         v_loss_sum = 0.0
         v_acc_sum = 0.0
@@ -336,7 +355,9 @@ def run_training(
                     report(message=f"Canceled during validation epoch {epoch}", epoch=epoch, step=global_step)
                     return
 
-                x, y = x.to(device), y.to(device)
+                x = x.to(device, non_blocking=use_cuda)
+                y = y.to(device, non_blocking=use_cuda)
+
                 logits = model(x)
                 loss = loss_fn(logits, y)
 
@@ -385,7 +406,9 @@ def make_app(manager: TaskManager) -> web.Application:
             max_val_batches=int(payload.get("max_val_batches", 50)),
             seed=int(payload.get("seed", 1337)),
             data_dir=str(payload.get("data_dir", "./data")),
-            num_workers=int(payload.get("num_workers", 0)),
+            num_workers=int(payload.get("num_workers", 2)),
+            device=str(payload.get("device", "auto")),
+            pin_memory=bool(payload.get("pin_memory", True)),
         )
 
         try:
