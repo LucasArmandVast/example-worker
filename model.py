@@ -27,6 +27,7 @@ from typing import Any, Dict, Optional, Tuple
 import urllib.request
 import urllib.error
 from aiohttp import web
+import ssl
 
 # ---- PyTorch / TorchVision ----
 import torch
@@ -212,36 +213,40 @@ class TaskManager:
             self._status.last_update_at = now_s()
 
     def end_session(self, task_id: str) -> None:
-        """
-        Best-effort POST to the session manager to end a session.
+            """
+            Best-effort HTTPS POST to the local worker session server.
 
-        Sends:
-          POST http://127.0.0.1:3000/session/end
-          Content-Type: application/json
-          Body: {"session_id": "<task_id>"}
+            Assumes the session server is running with aiohttp + USE_SSL=true
+            and is bound on WORKER_PORT in the same environment.
+            """
+            port = int(os.environ.get("WORKER_PORT", "3000"))
+            url = f"https://127.0.0.1:{port}/session/end"
 
-        This is called from the training thread, so it must be synchronous and
-        bounded by short timeouts.
-        """
-        url = "http://127.0.0.1:3000/session/end"
-        payload = json.dumps({"session_id": task_id}).encode("utf-8")
-        req = urllib.request.Request(
-            url=url,
-            data=payload,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-
-        try:
-            # Keep timeouts short so we don't hang shutdown or task completion.
-            with urllib.request.urlopen(req, timeout=2.0) as resp:
-                # Read response to complete the request; ignore body.
-                _ = resp.read()
-        except Exception as e:
-            # Best-effort: record but do not fail the training task on this.
-            self._set_status_update(
-                message=f"{self._status.message} | end_session failed: {type(e).__name__}: {e}"
+            payload = json.dumps({"session_id": task_id}).encode("utf-8")
+            req = urllib.request.Request(
+                url=url,
+                data=payload,
+                method="POST",
+                headers={"Content-Type": "application/json"},
             )
+
+            # Simplest: internal call, TLS on, skip cert verification.
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            try:
+                with urllib.request.urlopen(req, timeout=2.0, context=ctx) as resp:
+                    _ = resp.read()
+            except Exception as e:
+                # Best-effort: don't fail training if session end fails.
+                try:
+                    self._set_status_update(
+                        message=f"{self._status.message} | end_session failed: {type(e).__name__}: {e}"
+                    )
+                except Exception:
+                    pass
+
 
     def _train_entrypoint(self, task_id: str, cfg: TaskConfig, cancel_event: threading.Event) -> None:
         try:
