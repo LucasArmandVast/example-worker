@@ -220,7 +220,9 @@ class TaskManager:
             and is bound on WORKER_PORT in the same environment.
             """
             port = int(os.environ.get("WORKER_PORT", "3000"))
-            url = f"https://127.0.0.1:{port}/session/end"
+            use_ssl = os.environ.get("USE_SSL", "false") == "true"
+            scheme = "https" if use_ssl else "http"
+            url = f"{scheme}://127.0.0.1:{port}/session/end"
 
             payload = json.dumps({"session_id": task_id}).encode("utf-8")
             req = urllib.request.Request(
