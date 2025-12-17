@@ -220,7 +220,7 @@ class TaskManager:
             and is bound on WORKER_PORT in the same environment.
             """
             port = int(os.environ.get("WORKER_PORT", "3000"))
-            use_ssl = os.environ.get("USE_SSL", "false") == "true"
+            use_ssl = os.environ.get("USE_SSL", "true") == "true"
             scheme = "https" if use_ssl else "http"
             url = f"{scheme}://127.0.0.1:{port}/session/end"
 
