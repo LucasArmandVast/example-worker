@@ -28,12 +28,13 @@ worker_config = WorkerConfig(
     model_healthcheck_url=MODEL_HEALTHCHECK_ENDPOINT,
     handlers=[
         HandlerConfig(
-            route="/start_task",
+            route="/start_sync_task",
             allow_parallel_requests=False,
             benchmark_config=BenchmarkConfig(
                 dataset=benchmark_dataset, runs=1, do_warmup=False
             )
         ),
+        HandlerConfig(route="/start_task"),
         HandlerConfig(route="/status"),
         HandlerConfig(route="/cancel_task"),
     ],

@@ -24,7 +24,8 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
-
+import urllib.request
+import urllib.error
 from aiohttp import web
 
 # ---- PyTorch / TorchVision ----
@@ -104,6 +105,7 @@ class TaskConfig:
     num_workers: int = 2          # GPU input pipeline benefits from workers (tune per box)
     device: str = "auto"          # "auto" | "cuda" | "cpu"
     pin_memory: bool = True
+    task_id: str = None
 
 
 @dataclass
@@ -157,7 +159,9 @@ class TaskManager:
             return True, ""
 
     def start(self, cfg: TaskConfig) -> str:
-        task_id = str(uuid.uuid4())
+        if cfg.task_id is None:
+            raise RuntimeError("Cannot start task without session_id")
+        task_id = cfg.task_id
         cancel_event = threading.Event()
 
         with self._lock:
@@ -188,7 +192,6 @@ class TaskManager:
         t.start()
         return task_id
 
-
     def cancel(self) -> Dict[str, Any]:
         with self._lock:
             if self._status.state != "running":
@@ -208,9 +211,44 @@ class TaskManager:
                 setattr(self._status, k, v)
             self._status.last_update_at = now_s()
 
+    def end_session(self, task_id: str) -> None:
+        """
+        Best-effort POST to the session manager to end a session.
+
+        Sends:
+          POST http://127.0.0.1:3000/session/end
+          Content-Type: application/json
+          Body: {"session_id": "<task_id>"}
+
+        This is called from the training thread, so it must be synchronous and
+        bounded by short timeouts.
+        """
+        url = "http://127.0.0.1:3000/session/end"
+        payload = json.dumps({"session_id": task_id}).encode("utf-8")
+        req = urllib.request.Request(
+            url=url,
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+
+        try:
+            # Keep timeouts short so we don't hang shutdown or task completion.
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                # Read response to complete the request; ignore body.
+                _ = resp.read()
+        except Exception as e:
+            # Best-effort: record but do not fail the training task on this.
+            self._set_status_update(
+                message=f"{self._status.message} | end_session failed: {type(e).__name__}: {e}"
+            )
+
     def _train_entrypoint(self, task_id: str, cfg: TaskConfig, cancel_event: threading.Event) -> None:
         try:
             run_training(task_id=task_id, cfg=cfg, cancel_event=cancel_event, report=self._set_status_update)
+            
+            # IMPORTANT: We call this function to tell our worker that the session has ended.
+            self.end_session(task_id)
 
             if cancel_event.is_set():
                 self._set_status_update(
@@ -376,7 +414,6 @@ def run_training(task_id: str, cfg: TaskConfig, cancel_event: threading.Event, r
             val_acc=v_acc_sum / max(1, v_batches),
         )
 
-
 # -----------------------------
 # aiohttp server
 # -----------------------------
@@ -396,6 +433,7 @@ def make_app(manager: TaskManager) -> web.Application:
     app["ready_event"] = asyncio.Event()
     app.on_startup.append(on_startup)
 
+    app["sync_lock"] = asyncio.Lock()
 
     async def start_task(request: web.Request) -> web.Response:
         payload = await json_request(request)
@@ -412,6 +450,7 @@ def make_app(manager: TaskManager) -> web.Application:
             num_workers=int(payload.get("num_workers", 2)),
             device=str(payload.get("device", "auto")),
             pin_memory=bool(payload.get("pin_memory", True)),
+            task_id=str(payload.get("session_id"))
         )
 
         try:
@@ -429,8 +468,107 @@ def make_app(manager: TaskManager) -> web.Application:
         _ = await json_request(request)
         st = manager.cancel()
         return web.json_response({"ok": True, "status": st})
+    
+    async def start_sync_task(request: web.Request) -> web.Response:
+        payload = await json_request(request)
+
+        # Build config (same defaults as /start_task)
+        session_id = payload.get("session_id")
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        cfg = TaskConfig(
+            epochs=int(payload.get("epochs", 2)),
+            batch_size=int(payload.get("batch_size", 64)),
+            lr=float(payload.get("lr", 1e-3)),
+            max_train_batches_per_epoch=int(payload.get("max_train_batches_per_epoch", 200)),
+            max_val_batches=int(payload.get("max_val_batches", 50)),
+            seed=int(payload.get("seed", 1337)),
+            data_dir=str(payload.get("data_dir", "./data")),
+            num_workers=int(payload.get("num_workers", 2)),
+            device=str(payload.get("device", "auto")),
+            pin_memory=bool(payload.get("pin_memory", True)),
+            task_id=str(session_id),
+        )
+
+        # Disallow if an async task is already running
+        can, reason = manager.can_start()
+        if not can:
+            return web.json_response(
+                {"ok": False, "error": reason, "status": manager.snapshot()},
+                status=409,
+            )
+
+        # Disallow concurrent sync runs
+        sync_lock: asyncio.Lock = request.app["sync_lock"]
+        if sync_lock.locked():
+            return web.json_response(
+                {"ok": False, "error": "A sync task is already running"},
+                status=409,
+            )
+
+        # Local status (not TaskManager-backed)
+        st_lock = threading.Lock()
+        st = TaskStatus(
+            task_id=cfg.task_id,
+            state="running",
+            message="Sync task started",
+            created_at=now_s(),
+            started_at=now_s(),
+            last_update_at=now_s(),
+            epoch=0,
+            step=0,
+            total_steps=0,
+            config=cfg.__dict__.copy(),
+        )
+
+        def report(**kwargs: Any) -> None:
+            with st_lock:
+                for k, v in kwargs.items():
+                    setattr(st, k, v)
+                st.last_update_at = now_s()
+
+        dummy_cancel = threading.Event()  # never set; no canceling
+
+        async with sync_lock:
+            try:
+                loop = asyncio.get_running_loop()
+                # Run training off the event loop, but await completion = synchronous API
+                await loop.run_in_executor(
+                    None,
+                    run_training,
+                    cfg.task_id,
+                    cfg,
+                    dummy_cancel,
+                    report,
+                )
+
+                with st_lock:
+                    st.state = "completed"
+                    st.message = "Sync task completed"
+                    st.finished_at = now_s()
+                    st.last_update_at = now_s()
+
+                return web.json_response(
+                    {"ok": True, "task_id": cfg.task_id, "status": json.loads(json.dumps(st, default=lambda o: o.__dict__))},
+                )
+
+            except Exception as e:
+                with st_lock:
+                    st.state = "failed"
+                    st.message = "Sync task failed"
+                    st.finished_at = now_s()
+                    st.error_type = type(e).__name__
+                    st.error = str(e)
+                    st.last_update_at = now_s()
+
+                return web.json_response(
+                    {"ok": False, "error": str(e), "task_id": cfg.task_id, "status": json.loads(json.dumps(st, default=lambda o: o.__dict__))},
+                    status=500,
+                )
 
     app.router.add_post("/start_task", start_task)
+    app.router.add_post("/start_sync_task", start_sync_task)
     app.router.add_post("/status", status)
     app.router.add_post("/cancel_task", cancel_task)
 
