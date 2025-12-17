@@ -34,7 +34,7 @@ worker_config = WorkerConfig(
                 dataset=benchmark_dataset, runs=1, do_warmup=False
             )
         ),
-        HandlerConfig(route="/start_task", allow_parallel_requests=True, max_queue_time=10.0),
+        HandlerConfig(route="/start_task"),
         HandlerConfig(route="/status"),
         HandlerConfig(route="/cancel_task"),
     ],
