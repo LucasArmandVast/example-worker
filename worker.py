@@ -26,6 +26,7 @@ worker_config = WorkerConfig(
     model_server_port=MODEL_SERVER_PORT,
     model_log_file=MODEL_LOG_FILE,
     model_healthcheck_url=MODEL_HEALTHCHECK_ENDPOINT,
+    max_sessions=1,
     handlers=[
         HandlerConfig(
             route="/start_sync_task",
