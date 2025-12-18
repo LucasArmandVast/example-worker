@@ -196,7 +196,7 @@ async def main(
     sessions = []
     results = []
 
-    async with vastai.Serverless(debug=False) as client:
+    async with vastai.Serverless(max_poll_interval=0.1) as client:
         endpoint = await client.get_endpoint(endpoint_name)
 
         try:
