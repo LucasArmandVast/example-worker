@@ -15,6 +15,7 @@ MODEL_ERROR_LOG_MSGS = [
     "Traceback (most recent call last):"
 ]
 
+#
 benchmark_dataset = [
     {
         "max_train_batches_per_epoch" : 10
@@ -26,8 +27,12 @@ worker_config = WorkerConfig(
     model_server_port=MODEL_SERVER_PORT,
     model_log_file=MODEL_LOG_FILE,
     model_healthcheck_url=MODEL_HEALTHCHECK_ENDPOINT,
+    # This determines how many async sessions we can have at one time on each worker
     max_sessions=1,
     handlers=[
+        # We need to provide a synchronous route
+        # to benchmark on, which determines the performance
+        # of each recruited worker machine
         HandlerConfig(
             route="/start_sync_task",
             allow_parallel_requests=False,

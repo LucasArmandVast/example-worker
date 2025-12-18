@@ -1,9 +1,8 @@
 #!/bin/bash
 set -eo pipefail
 
-# ------------------------------------------------------------------------------
-# Create target directories
-# ------------------------------------------------------------------------------
+rm -rf etc/supervisor/conf.d/*
+
 mkdir -p /opt/workspace-internal/pytorch-model
 mkdir -p /opt/supervisor-scripts
 
