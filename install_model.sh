@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 
-rm -rf etc/supervisor/conf.d/*
+rm -rf /etc/supervisor/conf.d/*
 
 mkdir -p /opt/workspace-internal/pytorch-model
 mkdir -p /opt/supervisor-scripts
