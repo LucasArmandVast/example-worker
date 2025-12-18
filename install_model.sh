@@ -1,6 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 
+# Remove other unneeded services
 rm -rf /etc/supervisor/conf.d/*
 
 mkdir -p /opt/workspace-internal/pytorch-model
