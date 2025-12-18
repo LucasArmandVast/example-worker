@@ -5,5 +5,5 @@ utils=/opt/supervisor-scripts/utils
 . "${utils}/environment.sh"
 
 source /venv/main/bin/activate
-exec pip install aiohttp
+pip install aiohttp
 exec python3 /opt/workspace-internal/pytorch-model/model.py
